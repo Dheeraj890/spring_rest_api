@@ -1,6 +1,7 @@
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 class FundRor {
     LocalDate date;
@@ -36,64 +37,63 @@ public class Main {
         list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "150", new BigDecimal("290.0992")));
         list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "180", new BigDecimal("88.0992")));
 
-        // Step 1: Collect all unique empId, fundId pairs and their earliest introduction date
+        // Group entries by date and sort dates chronologically
+        Map<LocalDate, List<FundRor>> dateToEntries = list.stream()
+                .collect(Collectors.groupingBy(f -> f.date));
+        List<LocalDate> sortedDates = dateToEntries.keySet().stream()
+                .sorted()
+                .collect(Collectors.toList());
+
+        // Track the earliest introduction date for each empId-fundId pair
         Map<String, Map<String, LocalDate>> empFundIntroductionDate = new HashMap<>();
         for (FundRor fundRor : list) {
-            empFundIntroductionDate
-                    .computeIfAbsent(fundRor.empId, k -> new HashMap<>())
+            empFundIntroductionDate.computeIfAbsent(fundRor.empId, k -> new HashMap<>())
                     .putIfAbsent(fundRor.fundId, fundRor.date);
         }
 
-        // Step 2: Collect all unique dates
-        Set<LocalDate> allDates = new TreeSet<>();
-        for (FundRor fundRor : list) {
-            allDates.add(fundRor.date);
-        }
+        Map<String, Map<String, BigDecimal>> currentUnits = new HashMap<>();
+        List<FundRor> finalList = new ArrayList<>();
 
-        // Step 3: Create a map to store the most recent units for each empId and fundId
-        Map<String, Map<String, BigDecimal>> mostRecentUnits = new HashMap<>();
-        for (FundRor fundRor : list) {
-            mostRecentUnits
-                    .computeIfAbsent(fundRor.empId, k -> new HashMap<>())
-                    .put(fundRor.fundId, fundRor.units);
-        }
+        for (LocalDate date : sortedDates) {
+            // Snapshot of units before processing current date
+            Map<String, Map<String, BigDecimal>> priorUnits = new HashMap<>();
+            currentUnits.forEach((empId, fundMap) ->
+                    priorUnits.put(empId, new HashMap<>(fundMap)));
 
-        // Step 4: Add missing empId and fundId pairs for each date, ensuring we don't add fundIds introduced in future dates
-        List<FundRor> finalList = new ArrayList<>(list);
+            // Process existing entries for the current date
+            List<FundRor> entries = dateToEntries.getOrDefault(date, Collections.emptyList());
+            entries.forEach(entry -> {
+                finalList.add(entry);
+                currentUnits.computeIfAbsent(entry.empId, k -> new HashMap<>())
+                        .put(entry.fundId, entry.units);
+            });
 
-        for (LocalDate date : allDates) {
-            for (Map.Entry<String, Map<String, LocalDate>> empEntry : empFundIntroductionDate.entrySet()) {
-                String empId = empEntry.getKey();
-                Map<String, LocalDate> fundIntroductionDates = empEntry.getValue();
-
-                for (Map.Entry<String, LocalDate> fundEntry : fundIntroductionDates.entrySet()) {
-                    String fundId = fundEntry.getKey();
-                    LocalDate introductionDate = fundEntry.getValue();
-
-                    // Only add the fundId if the current date is on or after its introduction date
-                    if (!date.isBefore(introductionDate)) {
-                        boolean empFundExistsForDate = list.stream()
-                                .anyMatch(f -> f.date.equals(date) && f.empId.equals(empId) && f.fundId.equals(fundId));
-
-                        if (!empFundExistsForDate) {
-                            // Use the most recent units for this empId and fundId
-                            BigDecimal units = mostRecentUnits.get(empId).get(fundId);
-                            finalList.add(new FundRor(date, empId, fundId, units));
+            // Identify and add missing entries for the current date
+            empFundIntroductionDate.forEach((empId, fundIntroMap) -> {
+                fundIntroMap.forEach((fundId, introDate) -> {
+                    if (!introDate.isAfter(date)) { // Check if fundId is introduced by this date
+                        boolean exists = entries.stream()
+                                .anyMatch(e -> e.empId.equals(empId) && e.fundId.equals(fundId));
+                        if (!exists) {
+                            BigDecimal priorUnit = priorUnits.getOrDefault(empId, Collections.emptyMap())
+                                    .getOrDefault(fundId, BigDecimal.ZERO);
+                            FundRor missingEntry = new FundRor(date, empId, fundId, priorUnit);
+                            finalList.add(missingEntry);
+                            currentUnits.computeIfAbsent(empId, k -> new HashMap<>())
+                                    .put(fundId, priorUnit);
                         }
                     }
-                }
-            }
+                });
+            });
         }
 
-        // Step 5: Sort the final list by date, empId, and fundId for better readability
+        // Sort the final list by date, empId, and fundId
         finalList.sort(Comparator
-                .comparing((FundRor fundRor) -> fundRor.date)
-                .thenComparing(fundRor -> fundRor.empId)
-                .thenComparing(fundRor -> fundRor.fundId));
+                .comparing((FundRor fr) -> fr.date)
+                .thenComparing(fr -> fr.empId)
+                .thenComparing(fr -> fr.fundId));
 
-        // Print the final list
-        for (FundRor fundRor : finalList) {
-            System.out.println(fundRor);
-        }
+        // Output the result
+        finalList.forEach(System.out::println);
     }
 }
