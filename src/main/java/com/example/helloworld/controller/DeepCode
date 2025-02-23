@@ -1,0 +1,99 @@
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.*;
+
+class FundRor {
+    LocalDate date;
+    String empId;
+    String fundId;
+    BigDecimal units;
+
+    public FundRor(LocalDate date, String empId, String fundId, BigDecimal units) {
+        this.date = date;
+        this.empId = empId;
+        this.fundId = fundId;
+        this.units = units;
+    }
+
+    @Override
+    public String toString() {
+        return "FundRor{" +
+                "date=" + date +
+                ", empId='" + empId + '\'' +
+                ", fundId='" + fundId + '\'' +
+                ", units=" + units +
+                '}';
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        List<FundRor> list = new ArrayList<>();
+        list.add(new FundRor(LocalDate.of(2024, 12, 31), "E1", "120", new BigDecimal("90.0992")));
+        list.add(new FundRor(LocalDate.of(2024, 12, 31), "E1", "130", new BigDecimal("90.0992")));
+        list.add(new FundRor(LocalDate.of(2025, 1, 10), "E1", "120", new BigDecimal("12.0992")));
+        list.add(new FundRor(LocalDate.of(2025, 1, 10), "E1", "150", new BigDecimal("90.0992")));
+        list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "150", new BigDecimal("290.0992")));
+        list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "180", new BigDecimal("88.0992")));
+
+        // Step 1: Collect all unique empId, fundId pairs and their earliest introduction date
+        Map<String, Map<String, LocalDate>> empFundIntroductionDate = new HashMap<>();
+        for (FundRor fundRor : list) {
+            empFundIntroductionDate
+                    .computeIfAbsent(fundRor.empId, k -> new HashMap<>())
+                    .putIfAbsent(fundRor.fundId, fundRor.date);
+        }
+
+        // Step 2: Collect all unique dates
+        Set<LocalDate> allDates = new TreeSet<>();
+        for (FundRor fundRor : list) {
+            allDates.add(fundRor.date);
+        }
+
+        // Step 3: Create a map to store the most recent units for each empId and fundId
+        Map<String, Map<String, BigDecimal>> mostRecentUnits = new HashMap<>();
+        for (FundRor fundRor : list) {
+            mostRecentUnits
+                    .computeIfAbsent(fundRor.empId, k -> new HashMap<>())
+                    .put(fundRor.fundId, fundRor.units);
+        }
+
+        // Step 4: Add missing empId and fundId pairs for each date, ensuring we don't add fundIds introduced in future dates
+        List<FundRor> finalList = new ArrayList<>(list);
+
+        for (LocalDate date : allDates) {
+            for (Map.Entry<String, Map<String, LocalDate>> empEntry : empFundIntroductionDate.entrySet()) {
+                String empId = empEntry.getKey();
+                Map<String, LocalDate> fundIntroductionDates = empEntry.getValue();
+
+                for (Map.Entry<String, LocalDate> fundEntry : fundIntroductionDates.entrySet()) {
+                    String fundId = fundEntry.getKey();
+                    LocalDate introductionDate = fundEntry.getValue();
+
+                    // Only add the fundId if the current date is on or after its introduction date
+                    if (!date.isBefore(introductionDate)) {
+                        boolean empFundExistsForDate = list.stream()
+                                .anyMatch(f -> f.date.equals(date) && f.empId.equals(empId) && f.fundId.equals(fundId));
+
+                        if (!empFundExistsForDate) {
+                            // Use the most recent units for this empId and fundId
+                            BigDecimal units = mostRecentUnits.get(empId).get(fundId);
+                            finalList.add(new FundRor(date, empId, fundId, units));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 5: Sort the final list by date, empId, and fundId for better readability
+        finalList.sort(Comparator
+                .comparing((FundRor fundRor) -> fundRor.date)
+                .thenComparing(fundRor -> fundRor.empId)
+                .thenComparing(fundRor -> fundRor.fundId));
+
+        // Print the final list
+        for (FundRor fundRor : finalList) {
+            System.out.println(fundRor);
+        }
+    }
+}
