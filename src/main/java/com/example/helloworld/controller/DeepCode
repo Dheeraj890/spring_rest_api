@@ -1,100 +1,35 @@
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.*;
-import java.util.stream.Collectors;
 
-class FundRor {
-    LocalDate date;
-    String empId;
-    String fundId;
-    BigDecimal units;
-
-    public FundRor(LocalDate date, String empId, String fundId, BigDecimal units) {
-        this.date = date;
-        this.empId = empId;
-        this.fundId = fundId;
-        this.units = units;
-    }
-
-    @Override
-    public String toString() {
-        return "FundRor{" +
-                "date=" + date +
-                ", empId='" + empId + '\'' +
-                ", fundId='" + fundId + '\'' +
-                ", units=" + units +
-                '}';
-    }
-}
-
-
-public class Main {
-    public static void main(String[] args) {
-        List<FundRor> list = new ArrayList<>();
-        list.add(new FundRor(LocalDate.of(2024, 12, 31), "E1", "120", new BigDecimal("90.0992")));
-        list.add(new FundRor(LocalDate.of(2024, 12, 31), "E1", "130", new BigDecimal("90.0992")));
-        list.add(new FundRor(LocalDate.of(2025, 1, 10), "E1", "120", new BigDecimal("12.0992")));
-        list.add(new FundRor(LocalDate.of(2025, 1, 10), "E1", "150", new BigDecimal("90.0992")));
-        list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "150", new BigDecimal("290.0992")));
-        list.add(new FundRor(LocalDate.of(2025, 1, 15), "E1", "180", new BigDecimal("88.0992")));
-
-        // Group entries by date and sort dates chronologically
-        Map<LocalDate, List<FundRor>> dateToEntries = list.stream()
-                .collect(Collectors.groupingBy(f -> f.date));
-        List<LocalDate> sortedDates = dateToEntries.keySet().stream()
-                .sorted()
-                .collect(Collectors.toList());
-
-        // Track the earliest introduction date for each empId-fundId pair
-        Map<String, Map<String, LocalDate>> empFundIntroductionDate = new HashMap<>();
-        for (FundRor fundRor : list) {
-            empFundIntroductionDate.computeIfAbsent(fundRor.empId, k -> new HashMap<>())
-                    .putIfAbsent(fundRor.fundId, fundRor.date);
-        }
-
-        Map<String, Map<String, BigDecimal>> currentUnits = new HashMap<>();
-        List<FundRor> finalList = new ArrayList<>();
-
-        for (LocalDate date : sortedDates) {
-            // Snapshot of units before processing current date
-            Map<String, Map<String, BigDecimal>> priorUnits = new HashMap<>();
-            currentUnits.forEach((empId, fundMap) ->
-                    priorUnits.put(empId, new HashMap<>(fundMap)));
-
-            // Process existing entries for the current date
-            List<FundRor> entries = dateToEntries.getOrDefault(date, Collections.emptyList());
-            entries.forEach(entry -> {
-                finalList.add(entry);
-                currentUnits.computeIfAbsent(entry.empId, k -> new HashMap<>())
-                        .put(entry.fundId, entry.units);
-            });
-
-            // Identify and add missing entries for the current date
-            empFundIntroductionDate.forEach((empId, fundIntroMap) -> {
-                fundIntroMap.forEach((fundId, introDate) -> {
-                    if (!introDate.isAfter(date)) { // Check if fundId is introduced by this date
-                        boolean exists = entries.stream()
-                                .anyMatch(e -> e.empId.equals(empId) && e.fundId.equals(fundId));
-                        if (!exists) {
-                            BigDecimal priorUnit = priorUnits.getOrDefault(empId, Collections.emptyMap())
-                                    .getOrDefault(fundId, BigDecimal.ZERO);
-                            FundRor missingEntry = new FundRor(date, empId, fundId, priorUnit);
-                            finalList.add(missingEntry);
-                            currentUnits.computeIfAbsent(empId, k -> new HashMap<>())
-                                    .put(fundId, priorUnit);
-                        }
-                    }
-                });
-            });
-        }
-
-        // Sort the final list by date, empId, and fundId
-        finalList.sort(Comparator
-                .comparing((FundRor fr) -> fr.date)
-                .thenComparing(fr -> fr.empId)
-                .thenComparing(fr -> fr.fundId));
-
-        // Output the result
-        finalList.forEach(System.out::println);
-    }
-}
+<project name="udpdcpriceupsertprocess" basedir="." default="jar">
+<property name="source.dir" <property name="lib.dir" <property name="class.dir" <property name="jar.dir" <property name="jar.file" <property name="main-class" <property name="start-class"
+<path id="libraries.path">
+value="source"/>
+<fileset dir="${lib.dir}"> <include name="*.jar"/>
+</fileset>
+value="lib"/> value="bin"/> value="dist"/>
+value="${jar.dir}/${ant.project.name}.jar"/> value="org.springframework.boot.loader.launch. JarLauncher"/>
+value="com.alight.udp.dcprices.dc.publisher.UdpDcPricesUpsertPublisher"/>
+</path>
+<target name="clean" description="delete old files">
+<!-- <delete dir="${class.dir}"/>
+<delete dir="${jar.dir}"/>
+</target>
+-->
+<target name="compile" description= "build class files" depends="clean"> <mkdir dir="${class.dir}"/>
+<javac srcdir="${source.dir}" destdir="${class.dir}">
+<classpath refid="libraries.path"/>
+</javac>
+</target>
+<target name="jar" depends="compile">
+<mkdir dir="${jar.dir}"/>
+<mkdir dir="${class.dir}/${lib.dir}"/>
+<copy todir="${class.dir}/${lib.dir}" flatten="true"> <path refid="libraries.path"/>
+</copy>
+<manifestclasspath property="manifest.classpath" jarfile="${jar.file}"> <classpath refid="libraries.path"/> </manifestclasspath>
+<jar destfile="${jar.file}" basedir="${class.dir}">
+<manifest>
+<attribute name="Main-Class" value="${main-class}"/> <attribute name="Start-Class" value="${start-class}"/> <attribute name="Class-Path" value="${manifest.classpath}"/> </manifest>
+</jar>
+</target>
+<target name="run" depends="jar">
+<java jar="${jar.dir}/${ant.project.name}.jar" fork="true"/> </target>
+</project>
